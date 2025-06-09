@@ -1,3 +1,5 @@
+import os
+
 import requests
 import tiktoken
 from dotenv import load_dotenv
@@ -65,6 +67,14 @@ def search(client, query):
 
 
 def llm(question, context):
+    context_template = """
+    Q: {question}
+    A: {text}
+        """.strip()
+    context_string = "\n\n".join([
+        context_template.format(question=ctx["question"], text=ctx["text"]) for ctx in context
+    ]).strip()
+
     prompt_template = """
 You're a course teaching assistant. Answer the QUESTION based on the CONTEXT from the FAQ database.
 Use only the facts from the CONTEXT when answering the QUESTION.
@@ -76,7 +86,7 @@ CONTEXT:
     """.strip()
     prompt = prompt_template.format(
         question=question,
-        context=context
+        context=context_string
     )
     # print(prompt)
     # print(len(prompt))
@@ -109,22 +119,14 @@ CONTEXT:
 if __name__ == "__main__":
     load_dotenv()
 
-    es_client = Elasticsearch("http://localhost:9200")
+    es_client = Elasticsearch(os.getenv("ELASTIC_SEARCH_HOST", "http://localhost:9200"))
     if not es_client.indices.exists(index="course-question"):
         setup(es_client)
 
     user_question = "How do copy a file to a Docker container?"
     search_result = search(es_client, user_question)
-    contexts = [s["_source"] for s in search_result["hits"]["hits"]]
+    context_list = [s["_source"] for s in search_result["hits"]["hits"]]
     # pprint.pp(context[2])
 
-    context_template = """
-Q: {question}
-A: {text}
-    """.strip()
-    context_string = "\n\n".join([
-        context_template.format(question=ctx["question"], text=ctx["text"]) for ctx in contexts
-    ]).strip()
-
-    response = llm(user_question, context_string)
+    response = llm(user_question, context_list)
     print(response)
